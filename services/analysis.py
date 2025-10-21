@@ -28,7 +28,7 @@ class AnalysisService:
 
     @staticmethod
     async def save_dataset(df: DataFrame) -> str:
-        middlewares = ['summary', 'cleaning']
+        middlewares = ['summary', 'cleaning', 'visualization']
         job_id = str(uuid.uuid4())
         request = {"job_id": job_id, "dataframe": df}
         result = AnalysisService.run_middlewares(middlewares, request)
@@ -36,9 +36,25 @@ class AnalysisService:
         return job_id
 
     @staticmethod
-    def get_dataset(job_id: str) -> pd.DataFrame | None:
-        raw_df = data_storage.get(job_id)
-        return {'cleaned_dataframe': raw_df['dataframe'], 'summary': raw_df['summary']} if raw_df else None
+    def get_dataset(job_id: str) -> dict | None:
+        raw = data_storage.get(job_id)
+        if not raw:
+            return None
+        df = raw.get('dataframe')
+        summary = raw.get('summary')
+        plots = raw.get('plots', [])
+
+        if isinstance(df, pd.DataFrame):
+            preview_records = df.head(5).to_dict(orient='records')
+        else:
+            preview_records = None
+        return {
+            'job_id': job_id,
+            'dataframe_preview': preview_records,
+            'rows_returned': len(preview_records) if preview_records else 0,
+            'summary': summary,
+            'plots': plots,
+        }
 
     @staticmethod
     def run_middlewares(middlewares: list, request: dict):
@@ -54,3 +70,4 @@ class AnalysisService:
                 raise HTTPException(status_code=500, detail="Error processing the dataset.")
 
         return result
+
