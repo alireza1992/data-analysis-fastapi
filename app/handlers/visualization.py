@@ -11,7 +11,7 @@ BASE_URL = "127.0.0.1:8000"
 os.makedirs(PLOT_DIR, exist_ok=True)
 
 class VisualizationHandler(Handler):
-    def handle(self, request) -> dict:
+    async def handle(self, request) -> dict:
         df = request.get("dataframe")
         if df is None or not isinstance(df, pd.DataFrame):
             return request

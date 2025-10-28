@@ -13,7 +13,7 @@ _data_storage: dict[str, Dict[str, Any]] = {}
 
 
 class AnalysisService:
-    async def analyse_file(self, file: UploadFile) -> str:
+    def save(self, file: UploadFile) -> str:
         try:
             df = pd.read_csv(file.file, encoding="latin1", on_bad_lines="skip")
         except Exception as e:
@@ -27,33 +27,35 @@ class AnalysisService:
             )
         except ValidationError as e:
             raise HTTPException(status_code=400, detail=str(e))
-        job_id = await self._save_dataset(df)
+        job_id =  self._save_dataset(df)
         return job_id
 
-    async def _save_dataset(self, df: pd.DataFrame) -> str:
-        middlewares = ["cleaning", "summary", "visualization"]
+    def _save_dataset(self, df: pd.DataFrame) -> str:
         job_id = str(uuid.uuid4())
-        request: Dict[str, Any] = {"job_id": job_id, "dataframe": df}
-        result = self._run_middlewares(middlewares, request)
-        # Ensure dataframe still present
-        if 'dataframe' not in result:
-            result['dataframe'] = df
-        _data_storage[job_id] = result
+        _data_storage[job_id] = {"job_id": job_id, "dataframe": df}
+
         return job_id
 
-    def get_dataset(self, job_id: str) -> Dict[str, Any] | None:
+    async def analyze(self, job_id: str) -> Dict[str, Any] | None:
         stored = _data_storage.get(job_id)
         if not stored:
             return None
         df = stored.get('dataframe')
+        middlewares = ["cleaning", "summary", "visualization"]
+        request = {'job_id': job_id, 'dataframe': df}
+        result = await self._run_middlewares(middlewares, request)
+        if 'dataframe' not in result:
+            result['dataframe'] = df
+        _data_storage[job_id] = result
         if isinstance(df, pd.DataFrame):
             preview = df.head(5).to_dict(orient='records')
         else:
             preview = None
-        summary = stored.get('summary')
-        plots = stored.get('plots', [])
+        summary = result.get('summary')
+        plots = result.get('plots', [])
         safe_summary = to_native(summary) if summary else None
         safe_preview = to_native(preview) if preview else None
+
         return {
             'job_id': job_id,
             'rows_returned': len(safe_preview) if safe_preview else 0,
@@ -62,13 +64,13 @@ class AnalysisService:
             'plots': plots,
         }
 
-    def _run_middlewares(self, middlewares: list[str], request: Dict[str, Any]) -> Dict[str, Any]:
+    async def _run_middlewares(self, middlewares: list[str], request: Dict[str, Any]) -> Dict[str, Any]:
         current = request
         for name in middlewares:
             handler_class = HANDLER_REGISTRY.get(name)
             if not handler_class:
                 raise ValueError(f"Unknown handler: {name}")
-            result = handler_class().handle(current)
+            result = await handler_class().handle(current)
             if result is None:
                 raise HTTPException(status_code=500, detail=f"Handler '{name}' returned None")
             if 'dataframe' not in result and 'dataframe' in current:

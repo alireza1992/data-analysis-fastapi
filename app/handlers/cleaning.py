@@ -3,7 +3,7 @@ from .base import Handler
 
 
 class CleaningHandler(Handler):
-    def handle(self, request):
+    async def handle(self, request):
         df = request.get("dataframe")
         if df is None or not isinstance(df, pd.DataFrame):
             return request
